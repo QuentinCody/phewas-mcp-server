@@ -57,12 +57,9 @@ export const phewasCatalog: ApiCatalog = {
                 { name: "variant", type: "string", required: true, description: "GRCh38 chr:pos-ref-alt." },
             ],
         },
-        {
-            method: "GET",
-            path: "/finngen/api/top_hits",
-            summary: "FinnGen top genome-wide significant hits across all endpoints.",
-            category: "finngen",
-        },
+        // NOTE: /finngen/api/top_hits was removed 2026-04-17 — upstream returns
+        // HTTP 404. FinnGen hosts a summary PheWeb page but no top-hits JSON
+        // endpoint. Use /finngen/api/variant/{variant} for targeted lookups.
         // ---------------------------------------------------------------
         // UKB-TOPMed — https://pheweb.org/UKB-TOPMed
         // ---------------------------------------------------------------
@@ -89,12 +86,9 @@ export const phewasCatalog: ApiCatalog = {
                 { name: "variant", type: "string", required: true, description: "GRCh38 chr:pos-ref-alt." },
             ],
         },
-        {
-            method: "GET",
-            path: "/ukb-topmed/api/top_hits",
-            summary: "UKB-TOPMed top hits (list of most significant variant-phenotype pairs).",
-            category: "ukb-topmed",
-        },
+        // NOTE: /ukb-topmed/api/top_hits was removed 2026-04-17 — upstream
+        // returns HTTP 404 (same pattern as FinnGen; PheWeb frontends host
+        // top-hits as HTML tables, not a JSON endpoint).
         // ---------------------------------------------------------------
         // BioBank Japan (BBJ) — https://pheweb.jp
         // ---------------------------------------------------------------
