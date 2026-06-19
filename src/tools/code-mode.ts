@@ -49,6 +49,8 @@ export function registerCodeMode(
 
     const executeTool = createExecuteTool({
         prefix: "phewas",
+        // Verifiable provenance: phewas_execute results carry a _meta.citation.
+        source: { id: "phewas", name: "PheWAS Catalog", url: "https://phewascatalog.org" },
         catalog: phewasCatalog,
         apiFetch,
         doNamespace: env.PHEWAS_DATA_DO,
