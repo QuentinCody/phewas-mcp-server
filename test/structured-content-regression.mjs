@@ -52,7 +52,7 @@ for (const { path: filePath, required } of toolExpectations) {
 
 const indexContent = readFile('src/index.ts');
 assertContains('src/index.ts', indexContent, 'PhewasDataDO', 'index.ts exports PhewasDataDO');
-assertContains('src/index.ts', indexContent, 'McpAgent', 'index.ts uses McpAgent');
+assertContains('src/index.ts', indexContent, 'StatelessMcpWorker', 'index.ts uses StatelessMcpWorker');
 assertContains('src/index.ts', indexContent, 'registerVariantLookup', 'index.ts registers variant-lookup tool');
 
 const variantLookupContent = readFile('src/tools/variant-lookup.ts');

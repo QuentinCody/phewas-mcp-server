@@ -13,7 +13,7 @@
  *   Exposing a single dedicated tool is both safer and cheaper.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@bio-mcp/shared/mcp";
 import { z } from "zod";
 import {
     createCodeModeResponse,
