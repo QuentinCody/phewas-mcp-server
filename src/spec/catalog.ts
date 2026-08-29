@@ -19,7 +19,7 @@ export const phewasCatalog: ApiCatalog = {
     baseUrl: "https://phewas-mcp-server.workers.dev",
     version: "1.0",
     auth: "none",
-    endpointCount: 13,
+    endpointCount: 10,
     notes:
         "- Multi-cohort PheWAS server. Every path is namespaced by cohort prefix.\n" +
         "- FinnGen / UKB-TOPMed / TPMI expect GRCh38 chr:pos-ref-alt variants.\n" +
