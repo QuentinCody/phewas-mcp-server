@@ -39,7 +39,11 @@ console.log(`${BLUE}PheWAS Structured Content Regression Tests${RESET}`);
 const toolExpectations = [
   {
     path: 'src/tools/variant-lookup.ts',
-    required: ['createCodeModeResponse', 'createCodeModeError'],
+    required: ['formatLookupResponse', 'createCodeModeError'],
+  },
+  {
+    path: 'src/tools/lookup-response.ts',
+    required: ['createCodeModeResponse', 'createCodeModeError', 'stageToDoAndRespond'],
   },
 ];
 

@@ -1,15 +1,15 @@
 import { buildHealthResponse, configureCitationSigning } from "@bio-mcp/shared";
-import { StatelessMcpWorker } from "@bio-mcp/shared/mcp";
-import { McpServer } from "@bio-mcp/shared/mcp";
-import { registerVariantLookup } from "./tools/variant-lookup";
-import { registerQueryData } from "./tools/query-data";
-import { registerGetSchema } from "./tools/get-schema";
-import { registerCodeMode } from "./tools/code-mode";
+import { McpServer, StatelessMcpWorker } from "@bio-mcp/shared/mcp";
 import { PhewasDataDO } from "./do";
+import { registerCodeMode } from "./tools/code-mode";
+import { registerGetSchema } from "./tools/get-schema";
+import { registerQueryData } from "./tools/query-data";
+import { registerVariantLookup } from "./tools/variant-lookup";
 
 export { PhewasDataDO };
 
 interface PhewasEnv {
+    OPENGWAS_JWT?: string;
     PHEWAS_DATA_DO: DurableObjectNamespace;
     CODE_MODE_LOADER: WorkerLoader;
 }
@@ -24,7 +24,7 @@ export class MyMCP extends StatelessMcpWorker {
 
     	configureCitationSigning(this.env);
         const env = this.env as unknown as PhewasEnv;
-        registerVariantLookup(this.server);
+        registerVariantLookup(this.server, env);
         registerQueryData(this.server, env);
         registerGetSchema(this.server, env);
         registerCodeMode(this.server, env);

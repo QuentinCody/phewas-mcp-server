@@ -13,32 +13,43 @@
  */
 
 import type { ApiCatalog } from "@bio-mcp/shared/codemode/catalog";
+import { finnGenPhenotypeEndpoints, finnGenPhenotypeWorkflow } from "./finngen-phenotypes";
+import { openGwasEndpoints } from "./opengwas";
 
 export const phewasCatalog: ApiCatalog = {
-    name: "PheWAS Hub (FinnGen + UKB-TOPMed + BBJ + TPMI + Genebass)",
+    name: "PheWAS Hub (FinnGen + UKB-TOPMed + BBJ + TPMI + Genebass + IEU OpenGWAS)",
     baseUrl: "https://phewas-mcp-server.workers.dev",
     version: "1.0",
-    auth: "none",
-    endpointCount: 10,
+    auth: "Cohort browsers and OpenGWAS status/batches: none. Other OpenGWAS queries: server-side OPENGWAS_JWT (Bearer).",
+    endpointCount: 11 + openGwasEndpoints.length + finnGenPhenotypeEndpoints.length,
+    workflows: [finnGenPhenotypeWorkflow],
     notes:
-        "- Multi-cohort PheWAS server. Every path is namespaced by cohort prefix.\n" +
+        "- Multi-cohort PheWAS server. Every path is namespaced by provider/cohort prefix.\n" +
+        "- IEU OpenGWAS is a separate source: /opengwas/*. POST query bodies use GRCh37 coordinates or rsIDs, without automatic liftover. Responses: {data: upstreamPayload, meta: {opengwas: provenanceAndRateLimits}}. Large payloads stage normally.\n" +
+        "- OpenGWAS authentication and attribution: https://api.opengwas.io/api/. Configure OPENGWAS_JWT server-side; never put tokens in code. No automatic retries; respect Retry-After and X-Allowance headers before another query. Dataset licensing/access is unchanged.\n" +
         "- FinnGen / UKB-TOPMed / TPMI expect GRCh38 chr:pos-ref-alt variants.\n" +
         "- BioBank Japan expects GRCh37 chr:pos-ref-alt variants.\n" +
         "- Genebass takes Ensembl gene IDs (ENSG...) and a burden set.\n" +
         "- If you pass an rsID in a {variant} slot the adapter auto-resolves it\n" +
         "  via Ensembl and formats it for the cohort's build before calling out.\n" +
         "- For cross-cohort lookups use the hand-built mcp_phewas_variant_lookup tool.\n" +
-        "- Canonical query shape: api.get('/finngen/api/variant/10:112998590-C-T')\n" +
+        "- FinnGen release selector: R12 (default) or R13 (public DF13). Discover /finngen/releases. Results retain meta.finngen release, assembly and source URL even when staged.\n" +
+        "- FinnGen phenotype discovery: /finngen/api/phenos, /finngen/api/pheno/{phenocode}, and /finngen/api/variant/{variant}/{phenocode}. These return {data: nativeJSON, meta: {finngen: requestAndHashContext}}; choose an exact phenocode from the same release. Names do not establish trait equivalence.\n" +
+        "- Canonical query shape: api.get('/finngen/api/variant/{variant}', {variant: '10:112998590-C-T', release: 'R13'})\n" +
         "- Genebass phewas endpoint returns { gene, phewas: [...] } with Pvalue per phenocode.",
     endpoints: [
+        ...openGwasEndpoints,
+        ...finnGenPhenotypeEndpoints,
         // ---------------------------------------------------------------
-        // FinnGen (r12) — https://r12.finngen.fi
+        // FinnGen — explicit R12/R13 selection; both GRCh38
         // ---------------------------------------------------------------
         {
             method: "GET",
             path: "/finngen/api/variant/{variant}",
-            summary: "FinnGen r12 PheWAS associations for a GRCh38 variant (chr:pos-ref-alt or rsID).",
+            summary: "FinnGen R12/R13 PheWAS associations for a GRCh38 variant (chr:pos-ref-alt or rsID). All upstream fields retained; effect sizes refer to the alternate allele.",
             category: "finngen",
+            queryParams: [{ name: "release", type: "string", required: false, enum: ["R12", "R13"], default: "R12", description: "Validated public release; R13 is DF13. Never silently upgraded." }],
+            example: "return await api.get('/finngen/api/variant/{variant}', {variant: '10:112998590-C-T', release: 'R13'});",
             pathParams: [
                 {
                     name: "variant",
@@ -53,9 +64,15 @@ export const phewasCatalog: ApiCatalog = {
             path: "/finngen/variant/{variant}",
             summary: "FinnGen human-facing variant page (HTML). Useful for producing `variant_url`.",
             category: "finngen",
+            queryParams: [{ name: "release", type: "string", required: false, enum: ["R12", "R13"], default: "R12", description: "Public FinnGen release; HTML returned with meta.finngen provenance." }],
             pathParams: [
                 { name: "variant", type: "string", required: true, description: "GRCh38 chr:pos-ref-alt." },
             ],
+        },
+        {
+            method: "GET", path: "/finngen/releases", category: "finngen",
+            summary: "Locally validated FinnGen release registry: browser URL, public release date, data freeze and GRCh38 assembly. R12 is the default; R13 is opt-in.",
+            example: "return await api.get('/finngen/releases');",
         },
         // NOTE: /finngen/api/top_hits was removed 2026-04-17 — upstream returns
         // HTTP 404. FinnGen hosts a summary PheWeb page but no top-hits JSON

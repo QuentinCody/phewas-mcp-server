@@ -1,4 +1,10 @@
-import { restFetch, type RestFetchOptions } from "@bio-mcp/shared/http/rest-fetch";
+import { type RestFetchOptions, restFetch } from "@bio-mcp/shared/http/rest-fetch";
+import { DEFAULT_FINNGEN_RELEASE, FINNGEN_RELEASES, type FinnGenRelease } from "./finngen-releases";
+
+export const PHEWAS_SOURCE = {
+    id: "phewas", name: "PheWAS Hub",
+    url: "https://github.com/QuentinCody/mcp-client-bio/tree/main/servers/phewas-mcp-server",
+};
 
 /**
  * Per-cohort base URLs. Sourced from the OpenAI life-science plugin scripts:
@@ -9,7 +15,7 @@ import { restFetch, type RestFetchOptions } from "@bio-mcp/shared/http/rest-fetc
  *   - Genebass:   scripts/genebass_gene_burden.py  -> https://main.genebass.org (API at /api)
  */
 export const COHORT_BASE_URLS = {
-    finngen: "https://r12.finngen.fi",
+    finngen: FINNGEN_RELEASES[DEFAULT_FINNGEN_RELEASE].base_url,
     "ukb-topmed": "https://pheweb.org/UKB-TOPMed",
     bbj: "https://pheweb.jp",
     tpmi: "https://pheweb.ibms.sinica.edu.tw",
@@ -20,6 +26,11 @@ export type CohortKey = keyof typeof COHORT_BASE_URLS;
 
 export interface PhewasFetchOptions extends Omit<RestFetchOptions, "retryOn"> {
     baseUrl?: string;
+    finngenRelease?: FinnGenRelease;
+}
+
+export function cohortBaseUrl(cohort: CohortKey, release: FinnGenRelease = DEFAULT_FINNGEN_RELEASE): string {
+    return cohort === "finngen" ? FINNGEN_RELEASES[release].base_url : COHORT_BASE_URLS[cohort];
 }
 
 /** Fetch helper specialised per cohort with sensible retry/timeout defaults. */
@@ -29,7 +40,7 @@ export async function cohortFetch(
     params?: Record<string, unknown>,
     opts?: PhewasFetchOptions,
 ): Promise<Response> {
-    const baseUrl = opts?.baseUrl ?? COHORT_BASE_URLS[cohort];
+    const baseUrl = opts?.baseUrl ?? cohortBaseUrl(cohort, opts?.finngenRelease);
     const headers: Record<string, string> = {
         Accept: "application/json",
         ...(opts?.headers ?? {}),

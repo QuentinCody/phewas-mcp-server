@@ -4,7 +4,7 @@
  * Routes Code Mode `api.get()` / `api.post()` calls to one of five
  * cohort-specific base URLs based on the first path segment:
  *
- *   /finngen/...     -> https://r12.finngen.fi
+ *   /finngen/...     -> release-selected R12/R13 (default R12)
  *   /ukb-topmed/...  -> https://pheweb.org/UKB-TOPMed
  *   /bbj/...         -> https://pheweb.jp
  *   /tpmi/...        -> https://pheweb.ibms.sinica.edu.tw
@@ -23,13 +23,14 @@
 import type { ApiFetchFn } from "@bio-mcp/shared/codemode/catalog";
 import {
     COHORT_BUILD,
-    type Cohort,
     formatForCohort,
-    parseVariantString,
-    resolveRsid,
-    liftover,
 } from "@bio-mcp/shared/variants/resolve";
-import { cohortFetch, type CohortKey } from "./http";
+import { extractAssociations } from "./associations";
+import { fetchFinnGenPhenotype, finnGenPhenotypeRoute, validateFinnGenPhenotypePath } from "./finngen-phenotypes";
+import { annotateFinnGen, DEFAULT_FINNGEN_RELEASE, FINNGEN_RELEASES, finnGenReleaseMetadata, parseFinnGenRelease } from "./finngen-releases";
+import { type CohortKey, cohortFetch } from "./http";
+import { createOpenGwasFetch } from "./opengwas";
+import { resolvePhewasInput } from "./resolve-input";
 
 const COHORTS: readonly CohortKey[] = [
     "finngen",
@@ -76,49 +77,13 @@ async function resolveVariantSegment(
         }
     })();
 
-    // rsID path — resolve via Ensembl and format for the cohort's build.
-    if (/^rs\d+$/i.test(decoded)) {
-        const resolved = await resolveRsid(decoded);
-        const build = COHORT_BUILD[cohort as Cohort];
-        const coord = build === "GRCh37" ? resolved.grch37 : resolved.grch38;
-        if (!coord || !coord.canonical) {
-            throw new Error(
-                `Could not resolve ${decoded} to ${build} for cohort '${cohort}'.`,
-            );
-        }
-        return formatForCohort(coord, cohort as Cohort);
-    }
-
-    // Canonical chr:pos-ref-alt form — if it parses, lift over as needed.
-    // The cohort catalog paths assume the caller already supplied a coord
-    // in *some* build; if the separator format hints an explicit build
-    // prefix (e.g. `grch37:...`) we peel that off.
-    const buildMatch = decoded.match(/^(grch37|grch38|hg19|hg38):(.+)$/i);
-    const raw = buildMatch ? buildMatch[2] : decoded;
-    let parsed: ReturnType<typeof parseVariantString>;
-    try {
-        parsed = parseVariantString(raw);
-    } catch {
-        // Not a recognisable variant form — pass through untouched.
-        return segment;
-    }
-
-    const cohortBuild = COHORT_BUILD[cohort as Cohort];
-    const declaredBuild = buildMatch
-        ? buildMatch[1].toLowerCase() === "grch37" || buildMatch[1].toLowerCase() === "hg19"
-            ? "GRCh37"
-            : "GRCh38"
-        : cohortBuild;
-
-    if (declaredBuild === cohortBuild) {
-        return formatForCohort(
-            { chr: parsed.chr, pos: parsed.pos, ref: parsed.ref, alt: parsed.alt },
-            cohort as Cohort,
-        );
-    }
-
-    const lifted = await liftover(parsed, declaredBuild, cohortBuild);
-    return formatForCohort(lifted, cohort as Cohort);
+    const build = COHORT_BUILD[cohort];
+    const match = decoded.match(/^(grch37|grch38|hg19|hg38):(.+)$/i);
+    const declared = match ? (/^(grch37|hg19)$/i.test(match[1]) ? "GRCh37" : "GRCh38") : build;
+    const resolved = await resolvePhewasInput(match ? match[2] : decoded, declared, [build]);
+    const coord = build === "GRCh37" ? resolved.grch37 : resolved.grch38;
+    if (!coord?.canonical) throw new Error(`Cannot resolve ${decoded} for ${cohort}: ${resolved.warnings.join("; ")}`);
+    return formatForCohort(coord, cohort);
 }
 
 /**
@@ -138,12 +103,24 @@ async function maybeRewriteVariantPath(
     return `${prefix}${encodeURIComponent(resolved)}${suffix}`;
 }
 
-export function createPhewasApiFetch(): ApiFetchFn {
+function createCohortApiFetch(): ApiFetchFn {
     return async (request) => {
+        if (request.method !== "GET") throw new Error("PheWAS supports GET reads only.");
         const { cohort, rest } = detectCohort(request.path);
+        const { release, ...params } = request.params ?? {};
+        if (release !== undefined && cohort !== "finngen") throw new Error("The release parameter is only supported for FinnGen.");
+        const selectedRelease = parseFinnGenRelease(release);
+        if (cohort === "finngen" && rest === "/releases") {
+            return { status: 200, data: { default_release: DEFAULT_FINNGEN_RELEASE, releases: Object.values(FINNGEN_RELEASES), documentation: "https://www.finngen.fi/en/access_results" } };
+        }
+        if (cohort === "finngen" && finnGenPhenotypeRoute(rest)) validateFinnGenPhenotypePath(rest, params);
         const rewritten = await maybeRewriteVariantPath(cohort, rest);
 
-        const response = await cohortFetch(cohort, rewritten, request.params);
+        if (cohort === "finngen" && finnGenPhenotypeRoute(rewritten)) {
+            return fetchFinnGenPhenotype(rewritten, selectedRelease, params);
+        }
+
+        const response = await cohortFetch(cohort, rewritten, params, { finngenRelease: selectedRelease });
 
         if (!response.ok) {
             let errorBody: string;
@@ -163,10 +140,18 @@ export function createPhewasApiFetch(): ApiFetchFn {
         const contentType = response.headers.get("content-type") || "";
         if (!contentType.includes("json")) {
             const text = await response.text();
-            return { status: response.status, data: text };
+            if (rest.startsWith("/api/")) throw new Error(`Expected JSON from ${cohort}; received ${contentType || "unknown content type"}.`);
+            return { status: response.status, data: cohort === "finngen" ? { html: text, meta: { finngen: finnGenReleaseMetadata(selectedRelease) } } : text };
         }
 
         const data = await response.json();
-        return { status: response.status, data };
+        if (cohort === "finngen" && rest.startsWith("/api/variant/")) extractAssociations(data);
+        return { status: response.status, data: cohort === "finngen" ? annotateFinnGen(data, selectedRelease) : data };
     };
+}
+
+export function createPhewasApiFetch(openGwasJwt?: string): ApiFetchFn {
+    const openGwas = createOpenGwasFetch(openGwasJwt);
+    const cohort = createCohortApiFetch();
+    return request => request.path.startsWith("/opengwas/") ? openGwas(request) : cohort(request);
 }
